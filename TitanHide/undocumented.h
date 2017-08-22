@@ -30,6 +30,11 @@ typedef enum _SYSTEM_INFORMATION_CLASS
     SystemKernelDebuggerInformation = 35
 } SYSTEM_INFORMATION_CLASS, *PSYSTEM_INFORMATION_CLASS;
 
+typedef enum _SYSDBG_COMMAND
+{
+    SysDbgGetTriageDump = 29,
+} SYSDBG_COMMAND, *PSYSDBG_COMMAND;
+
 class Undocumented
 {
 public:
@@ -108,8 +113,16 @@ public:
         IN ULONG ProcessInformationLength,
         OUT PULONG ReturnLength OPTIONAL);
 
+    static NTSTATUS NTAPI NtSystemDebugControl(
+        IN SYSDBG_COMMAND Command,
+        IN PVOID InputBuffer OPTIONAL,
+        IN ULONG InputBufferLength OPTIONAL,
+        OUT PVOID OutputBuffer,
+        IN ULONG OutputBufferLength,
+        OUT PULONG ReturnLength OPTIONAL);
+
     static bool UndocumentedInit();
-    static PVOID GetKernelBase();
+    static PVOID GetKernelBase(PULONG pImageSize = NULL);
 };
 
 #endif

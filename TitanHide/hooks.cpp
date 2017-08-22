@@ -13,6 +13,7 @@ static HOOK hNtQuerySystemInformation = 0;
 static HOOK hNtClose = 0;
 static HOOK hNtSetInformationThread = 0;
 static HOOK hNtSetContextThread = 0;
+static HOOK hNtSystemDebugControl = 0;
 static FAST_MUTEX gDebugPortMutex;
 
 static NTSTATUS NTAPI HookNtSetInformationThread(
@@ -27,7 +28,7 @@ static NTSTATUS NTAPI HookNtSetInformationThread(
         ULONG pid = (ULONG)PsGetCurrentProcessId();
         if(Hider::IsHidden(pid, HideThreadHideFromDebugger))
         {
-            Log("[TITANHIDE] ThreadHideFromDebugger by %d\n", pid);
+            Log("[TITANHIDE] ThreadHideFromDebugger by %d\r\n", pid);
             PETHREAD Thread;
             NTSTATUS status;
 #if NTDDI_VERSION >= NTDDI_WIN8
@@ -74,7 +75,7 @@ static NTSTATUS NTAPI HookNtClose(
         DebugPort::Set(PsGetCurrentProcess(), OldDebugPort);
         ExReleaseFastMutex(&gDebugPortMutex);
         if(!NT_SUCCESS(ret))
-            Log("[TITANHIDE] NtClose(0x%p) by %d\n", Handle, pid);
+            Log("[TITANHIDE] NtClose(0x%p) by %d\r\n", Handle, pid);
     }
     else
         ret = Undocumented::NtClose(Handle);
@@ -95,7 +96,7 @@ static NTSTATUS NTAPI HookNtQuerySystemInformation(
         {
             if(Hider::IsHidden(pid, HideSystemDebuggerInformation))
             {
-                Log("[TITANHIDE] SystemKernelDebuggerInformation by %d\n", pid);
+                Log("[TITANHIDE] SystemKernelDebuggerInformation by %d\r\n", pid);
                 typedef struct _SYSTEM_KERNEL_DEBUGGER_INFORMATION
                 {
                     BOOLEAN DebuggerEnabled;
@@ -138,7 +139,7 @@ static NTSTATUS NTAPI HookNtQueryObject(
                 ProbeForRead(type->TypeName.Buffer, 1, 1);
                 if(RtlEqualUnicodeString(&type->TypeName, &DebugObject, FALSE)) //DebugObject
                 {
-                    Log("[TITANHIDE] DebugObject by %d\n", pid);
+                    Log("[TITANHIDE] DebugObject by %d\r\n", pid);
                     type->TotalNumberOfObjects = 0;
                     type->TotalNumberOfHandles = 0;
                 }
@@ -163,7 +164,7 @@ static NTSTATUS NTAPI HookNtQueryObject(
                     ProbeForRead(pObjectTypeInfo->TypeName.Buffer, 1, 1);
                     if(RtlEqualUnicodeString(&pObjectTypeInfo->TypeName, &DebugObject, FALSE)) //DebugObject
                     {
-                        Log("[TITANHIDE] DebugObject by %d\n", pid);
+                        Log("[TITANHIDE] DebugObject by %d\r\n", pid);
                         pObjectTypeInfo->TotalNumberOfObjects = 0;
                         //Bug found by Aguila, thanks!
                         pObjectTypeInfo->TotalNumberOfHandles = 0;
@@ -203,7 +204,7 @@ static NTSTATUS NTAPI HookNtQueryInformationProcess(
         {
             if(Hider::IsHidden(pid, HideProcessDebugFlags))
             {
-                Log("[TITANHIDE] ProcessDebugFlags by %d\n", pid);
+                Log("[TITANHIDE] ProcessDebugFlags by %d\r\n", pid);
                 __try
                 {
                     *(unsigned int*)ProcessInformation = TRUE;
@@ -218,7 +219,7 @@ static NTSTATUS NTAPI HookNtQueryInformationProcess(
         {
             if(Hider::IsHidden(pid, HideProcessDebugPort))
             {
-                Log("[TITANHIDE] ProcessDebugPort by %d\n", pid);
+                Log("[TITANHIDE] ProcessDebugPort by %d\r\n", pid);
                 __try
                 {
                     *(ULONG_PTR*)ProcessInformation = 0;
@@ -233,7 +234,7 @@ static NTSTATUS NTAPI HookNtQueryInformationProcess(
         {
             if(Hider::IsHidden(pid, HideProcessDebugObjectHandle))
             {
-                Log("[TITANHIDE] ProcessDebugObjectHandle by %d\n", pid);
+                Log("[TITANHIDE] ProcessDebugObjectHandle by %d\r\n", pid);
                 __try
                 {
                     *(ULONG_PTR*)ProcessInformation = 0;
@@ -261,7 +262,7 @@ static NTSTATUS NTAPI HookNtSetContextThread(
     {
         //http://lifeinhex.com/dont-touch-this-writing-good-drivers-is-really-hard
         //http://lifeinhex.com/when-software-is-good-enough
-        Log("[TITANHIDE] NtSetContextThread by %d\n", pid);
+        Log("[TITANHIDE] NtSetContextThread by %d\r\n", pid);
         __try
         {
             ProbeForRead(&Context->ContextFlags, sizeof(ULONG), 1);
@@ -289,6 +290,25 @@ static NTSTATUS NTAPI HookNtSetContextThread(
     return ret;
 }
 
+static NTSTATUS NTAPI HookNtSystemDebugControl(
+    IN SYSDBG_COMMAND Command,
+    IN PVOID InputBuffer,
+    IN ULONG InputBufferLength,
+    OUT PVOID OutputBuffer,
+    IN ULONG OutputBufferLength,
+    OUT PULONG ReturnLength)
+{
+    ULONG pid = (ULONG)PsGetCurrentProcessId();
+    if(Hider::IsHidden(pid, HideNtSystemDebugControl))
+    {
+        Log("[TITANHIDE] NtSystemDebugControl by %d\r\n", pid);
+        if(Command == SysDbgGetTriageDump)
+            return STATUS_INFO_LENGTH_MISMATCH;
+        return STATUS_DEBUGGER_INACTIVE;
+    }
+    return Undocumented::NtSystemDebugControl(Command, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength, ReturnLength);
+}
+
 int Hooks::Initialize()
 {
     ExInitializeFastMutex(&gDebugPortMutex);
@@ -311,6 +331,9 @@ int Hooks::Initialize()
     hNtSetContextThread = SSDT::Hook("NtSetContextThread", (void*)HookNtSetContextThread);
     if(hNtSetContextThread)
         hook_count++;
+    hNtSystemDebugControl = SSDT::Hook("NtSystemDebugControl", (void*)HookNtSystemDebugControl);
+    if(hNtSystemDebugControl)
+        hook_count++;
     return hook_count;
 }
 
@@ -322,4 +345,5 @@ void Hooks::Deinitialize()
     SSDT::Unhook(hNtSetInformationThread, true);
     SSDT::Unhook(hNtClose, true);
     SSDT::Unhook(hNtSetContextThread, true);
+    SSDT::Unhook(hNtSystemDebugControl, true);
 }

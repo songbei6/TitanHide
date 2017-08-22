@@ -3,6 +3,7 @@
 x64/
 ipch/
 signed/
+bin/
 *.opensdf
 *.sdf
 *.suo
@@ -11,3 +12,4 @@ signed/
 *.reg
 *.TMP
 !BreakOnSysRq.reg
+.vs/

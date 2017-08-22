@@ -342,11 +342,7 @@ bool CheckSystemDebugger()
     ZW_QUERY_SYSTEM_INFORMATION ZwQuerySystemInformation;
     SYSTEM_KERNEL_DEBUGGER_INFORMATION Info;
     ZwQuerySystemInformation = (ZW_QUERY_SYSTEM_INFORMATION)GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwQuerySystemInformation");
-    if(ZwQuerySystemInformation == NULL)
-    {
-        return false;
-    }
-    if(NT_SUCCESS(ZwQuerySystemInformation(SystemKernelDebuggerInformation, &Info, sizeof(Info), NULL)))
+    if(ZwQuerySystemInformation && NT_SUCCESS(ZwQuerySystemInformation(SystemKernelDebuggerInformation, &Info, sizeof(Info), NULL)))
     {
         if(Info.DebuggerEnabled || !Info.DebuggerNotPresent)
         {
@@ -354,6 +350,19 @@ bool CheckSystemDebugger()
         }
     }
     return false;
+}
+
+bool CheckSystemDebugControl()
+{
+    enum SYSDBG_COMMAND { SysDbgQueryModuleInformation = 0 };
+    typedef NTSTATUS(__stdcall * ZW_SYSTEM_DEBUG_CONTROL)(IN SYSDBG_COMMAND Command, IN PVOID InputBuffer OPTIONAL, IN ULONG InputBufferLength, OUT PVOID OutputBuffer OPTIONAL, IN ULONG OutputBufferLength, OUT PULONG ReturnLength OPTIONAL);
+    static const NTSTATUS STATUS_DEBUGGER_INACTIVE = (NTSTATUS)0xC0000354L;
+    ZW_SYSTEM_DEBUG_CONTROL ZwSystemDebugControl = (ZW_SYSTEM_DEBUG_CONTROL)GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwSystemDebugControl");
+    if(ZwSystemDebugControl == NULL)
+    {
+        return false;
+    }
+    return ZwSystemDebugControl(SysDbgQueryModuleInformation, NULL, 0, NULL, 0, NULL) != STATUS_DEBUGGER_INACTIVE;
 }
 
 bool CheckNtClose()
@@ -381,6 +390,7 @@ int main(int argc, char* argv[])
         printf("ProcessDebugObjectHandle: %d\n", CheckProcessDebugObjectHandle());
         printf("NtQueryObject: %d\n", CheckObjectList());
         printf("CheckSystemDebugger: %d\n", CheckSystemDebugger());
+        printf("SystemDebugControl: %d\n", CheckSystemDebugControl());
         printf("CheckNtClose: %d\n", CheckNtClose());
         //printf("ThreadHideFromDebugger: %d\n", HideFromDebugger());
         puts("");
